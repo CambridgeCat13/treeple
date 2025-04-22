@@ -7,17 +7,20 @@ Original file is located at
     https://colab.research.google.com/drive/1d7ipMRMx9b10KeaPRe-yLQq5tAo6Wnvd
 """
 
+import warnings
+
 import numpy as np
 from sklearn.metrics import accuracy_score
-from treeple import ObliqueRandomForestClassifier
-import warnings
 from sklearn.model_selection import train_test_split
+
+from treeple import ObliqueRandomForestClassifier
 
 """
 MultiTaskForestClassifier:
 A unified multi-task learning wrapper for SPORF, MORF, and HonestForest.
 Trains on all tasks jointly and evaluates per-task performance.
 """
+
 
 class MultiTaskForestClassifier:
     def __init__(self, clf_type="SPORF", task_ratios=None, random_state=42, **kwargs):
@@ -30,24 +33,21 @@ class MultiTaskForestClassifier:
                 "min_samples_split": 5,
                 "min_samples_leaf": 1,
                 "max_features": 0.5,
-                "bootstrap": True
+                "bootstrap": True,
             }
         elif clf_type == "MORF":
             self.model_cls = PatchObliqueRandomForestClassifier
-            self.default_params = {
-                "n_estimators": 200
-             }
+            self.default_params = {"n_estimators": 200}
         elif clf_type == "HonestForest":
             self.model_cls = HonestForestClassifier
             self.default_params = {
-
                 "n_estimators": 200,
                 "max_depth": None,
                 "min_samples_split": 2,
                 "min_samples_leaf": 5,
                 "bootstrap": True,
-                "max_features": "sqrt"
-             }
+                "max_features": "sqrt",
+            }
         else:
             raise ValueError(f"Unsupported tree: {clf_type}")
 
@@ -56,35 +56,28 @@ class MultiTaskForestClassifier:
         self.task_data = {}
 
         if task_ratios is None:
-            warnings.warn("No task_ratios provided. Using default {0: 0.5, 1: 0.5}. Override if needed.")
+            warnings.warn(
+                "No task_ratios provided. Using default {0: 0.5, 1: 0.5}. Override if needed."
+            )
             self.task_ratios = {0: 0.5, 1: 0.5}
         else:
             self.task_ratios = task_ratios
 
-
         self.random_state = random_state
-
 
     def add_task(self, task_id, X, y, test_size=0.2):
         if test_size > 0:
             X_train, X_test, y_train, y_test = train_test_split(
-                X, y,
-                test_size=test_size,
-                stratify=y,
-                random_state=self.random_state
+                X, y, test_size=test_size, stratify=y, random_state=self.random_state
             )
         else:
             X_train, y_train = X, y
             X_test, y_test = None, None
 
-        self.task_data[task_id] = {
-            "train": (X_train, y_train),
-            "test": (X_test, y_test)
-        }
-
+        self.task_data[task_id] = {"train": (X_train, y_train), "test": (X_test, y_test)}
 
     def get_task_ids(self):
-      return list(self.task_data.keys())
+        return list(self.task_data.keys())
 
     def fit(self):
         """Train on all tasks jointly (multi-task learning)."""
@@ -108,18 +101,20 @@ class MultiTaskForestClassifier:
         X_task = np.column_stack((X, np.full(len(X), task_id)))
         return self.model.predict(X_task)
 
-
     def score(self, task_id):
         """Return accuracy on the held-out test set for a specific task."""
         X_test, y_test = self.task_data[task_id]["test"]
         return accuracy_score(y_test, self.predict(X_test, task_id))
 
+
 def evaluate_transfer_efficiency(
-    X_source, y_source,
-    X_target, y_target,
+    X_source,
+    y_source,
+    X_target,
+    y_target,
     target_ratios=[0.01],
     seed=42,
-    clf_type="SPORF"  #"SPORF", "MORF", "HonestForest"
+    clf_type="SPORF",  # "SPORF", "MORF", "HonestForest"
 ):
     """
     Evaluate transfer efficiency using the specified classifier type.
@@ -137,25 +132,22 @@ def evaluate_transfer_efficiency(
     for ratio in target_ratios:
         if ratio < 1.0:
             X_train_target_sub, _, y_train_target_sub, _ = train_test_split(
-                X_train_target, y_train_target,
+                X_train_target,
+                y_train_target,
                 train_size=ratio,
                 stratify=y_train_target,
-                random_state=seed
+                random_state=seed,
             )
         else:
             X_train_target_sub, y_train_target_sub = X_train_target, y_train_target
         clf_base = MultiTaskForestClassifier(
-            clf_type=clf_type,
-            task_ratios={1: 1.0},
-            random_state=seed
+            clf_type=clf_type, task_ratios={1: 1.0}, random_state=seed
         )
         clf_base.add_task(1, X_train_target_sub, y_train_target_sub, test_size=0)
         clf_base.fit()
         acc_base = accuracy_score(y_test_target, clf_base.predict(X_test_target, task_id=1))
         clf_transfer = MultiTaskForestClassifier(
-            clf_type=clf_type,
-            task_ratios={0: 1.0, 1: 1.0},
-            random_state=seed
+            clf_type=clf_type, task_ratios={0: 1.0, 1: 1.0}, random_state=seed
         )
         clf_transfer.add_task(0, X_train_source, y_train_source, test_size=0)
         clf_transfer.add_task(1, X_train_target_sub, y_train_target_sub, test_size=0)
@@ -166,4 +158,3 @@ def evaluate_transfer_efficiency(
         print(f"  Baseline  (Source 0%):   Accuracy = {acc_base:.3f}")
         print(f"  Transfer  (Source 100%): Accuracy = {acc_transfer:.3f}")
         print("-" * 50)
-
